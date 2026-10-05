@@ -1,0 +1,29 @@
+{
+  "n": 822,
+  "hit@1": 47.81,
+  "hit@1_ci95": [
+    44.4,
+    51.22
+  ],
+  "hit@3": 72.26,
+  "hit@3_ci95": [
+    69.34,
+    75.3
+  ],
+  "invalid_top1_rate": 0.0,
+  "outside_label_set_top1_rate": 1.09,
+  "method": "rag",
+  "split": "test",
+  "n_train": 4690,
+  "n_classes_train": 105,
+  "seconds": 179.9,
+  "python": "3.11.15",
+  "model": "deepseek-flash",
+  "k_examples": 15,
+  "tokens": {
+    "cache_hit": 323840,
+    "cache_miss": 1058042,
+    "output": 13154
+  },
+  "cost_usd_peak_upper_bound": 0.3351
+}

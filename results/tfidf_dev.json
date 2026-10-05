@@ -1,0 +1,21 @@
+{
+  "n": 848,
+  "hit@1": 48.58,
+  "hit@1_ci95": [
+    45.17,
+    52.0
+  ],
+  "hit@3": 72.29,
+  "hit@3_ci95": [
+    69.1,
+    75.24
+  ],
+  "invalid_top1_rate": 0.0,
+  "outside_label_set_top1_rate": 0.0,
+  "method": "tfidf",
+  "split": "dev",
+  "n_train": 4690,
+  "n_classes_train": 105,
+  "seconds": 43.9,
+  "python": "3.11.15"
+}
