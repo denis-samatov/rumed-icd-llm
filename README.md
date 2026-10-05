@@ -1,6 +1,6 @@
 # rumed-icd-llm
 
-Prompting vs RAG vs LoRA fine-tuning for ICD-10 coding of Russian clinical complaints, with vLLM serving costs. All methods are evaluated on the same public test split, and every number in this README comes from `results/`.
+Prompting vs RAG for ICD-10 coding of Russian clinical complaints, with LoRA fine-tuning and vLLM serving planned. Implemented methods are evaluated on the same public test split. Local numbers in this README come from `results/`; the paper baseline is an external reference.
 
 **Status:** stages A and B are done. Method 0 reproduces the paper baseline, and methods 1–2 have been run on the DeepSeek API. Method 3 (LoRA) and serving are next.
 
@@ -13,7 +13,7 @@ Prompting vs RAG vs LoRA fine-tuning for ICD-10 coding of Russian clinical compl
 | Benchmark code and splits | sb-ai-lab/MedBench | Apache-2.0 |
 | Underlying records | RuMedPrime, [Zenodo 5765873](https://zenodo.org/records/5765873) | CC BY 3.0 |
 
-The data is not stored in this repository. To download it and record checksums, run `scripts/download_data.sh`.
+The data is not stored in this repository. `scripts/download_data.sh` downloads into a staging directory, verifies the committed `data/raw/SHA256SUMS`, and then installs the files. It refuses changed upstream data without replacing the checksum manifest. Loading a split also verifies its checksum.
 
 ## Methods
 
@@ -37,7 +37,9 @@ uv run python -m rumed_icd.evaluate --method tfidf --split dev
 uv run python -m rumed_icd.evaluate --method rag --split dev
 ```
 
-LLM responses are cached in `results/cache/`, keyed by example and prompt hash. An interrupted run resumes without paying for the same request twice.
+LLM responses are cached in `results/cache/`, keyed by example and prompt hash. Completed responses are written as they arrive, including when another request fails. A fully cached run requires no API key. A lost response before it is cached can still require a new request; concurrent evaluator processes sharing one cache are unsupported.
+
+Use `--output-dir /tmp/rumed-rerun` to preserve the committed metric files during verification. `--limit` must be positive and writes a separate smoke result; it is not a full-split score.
 
 ## Results
 
@@ -55,11 +57,19 @@ Test split, n = 822. Dev results are in `results/*_dev.json` and show the same r
 | 1 · few-shot, 15 fixed cases | 33.33 (30.29–36.62) | 52.55 (49.27–55.84) | 3.0% | ≤ $0.08 |
 | 2 · RAG, 15 nearest training cases | 47.81 (44.40–51.22) | 72.26 (69.34–75.30) | 1.1% | ≤ $0.34 |
 
-Costs are upper bounds at peak-hour prices, computed from the token usage the API reported.
+Costs are upper bounds at the recorded peak-hour prices, computed from the token usage the API reported. They estimate one full evaluation, including reused cached responses, rather than the amount billed for a replay. New runs report `new_requests` and `reused_responses` separately. These API costs do not measure vLLM serving costs.
 
 **What this shows so far**
 
-- **Method 0 validates the harness.** It reproduces the paper's feature-based baseline within its confidence interval. Its hyperparameters (C = 10, word 1–2-grams, char 2–5-grams) were fixed before the first run and were not tuned on test.
+- **Method 0 is a harness sanity check.** Its score is close to the paper's feature-based baseline. Its hyperparameters (C = 10, word 1–2-grams, char 2–5-grams) were fixed before the first run and were not tuned on test. Agreement of aggregate scores does not establish exact reproduction of the paper's implementation.
 - **A general-purpose API LLM without dataset examples is about 16 points below a linear classifier on Hit@1.** The labels follow the dataset's own coding practice: a few codes such as M54, I11 and G54 dominate. That practice is not recoverable from general ICD-10 knowledge.
-- **Fixed few-shot examples barely help.** Retrieved nearest cases (RAG) close the gap to the TF-IDF baseline, but they do not beat it: the two are within each other's 95% CIs.
+- **Fixed few-shot examples barely help in the recorded run.** Retrieved nearest cases (RAG) close the gap to TF-IDF; the observed RAG score is slightly lower. Overlapping individual confidence intervals do not establish equivalence or test the paired difference. Per-example predictions and a paired comparison are needed for that conclusion.
 - **This sets the bar for LoRA (method 3).** Fine-tuning has to beat about 49 / 73 to justify itself over a classifier that trains in seconds.
+
+## Evidence limits
+
+This benchmark is research software for dataset-specific coding, not a diagnostic service. Its record split does not establish patient-disjoint validation, performance at another institution, or clinical utility. No private institutional data is used here.
+
+The API runs use a different model from the planned open-weight LoRA experiment. A controlled fine-tuning comparison must rerun prompting and RAG with the same base model, select hyperparameters on dev, and evaluate test only after that choice is frozen. Training, GPU latency, throughput, quantization and serving cost are not yet demonstrated.
+
+Committed LLM metric summaries do not contain the response cache. Anyone can inspect them, but independent score reconstruction requires the corresponding per-example responses or a new API run. Offline tests mock all paid calls.

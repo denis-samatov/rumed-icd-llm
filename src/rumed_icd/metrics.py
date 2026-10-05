@@ -20,6 +20,8 @@ def hits(preds: Sequence[Sequence[str]], gold: Sequence[str], k: int) -> np.ndar
         raise ValueError(f"{len(preds)} predictions for {len(gold)} gold labels")
     if k < 1:
         raise ValueError("k must be >= 1")
+    if len(gold) == 0:
+        raise ValueError("cannot evaluate an empty gold set")
     return np.array([g in list(p)[:k] for p, g in zip(preds, gold, strict=True)], dtype=float)
 
 
@@ -31,6 +33,13 @@ def bootstrap_ci(
     values: np.ndarray, n_resamples: int = 2000, alpha: float = 0.05, seed: int = 0
 ) -> tuple[float, float]:
     """Percentile bootstrap CI of the mean over examples."""
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 1 or values.size == 0:
+        raise ValueError("values must be a nonempty one-dimensional array")
+    if not np.isfinite(values).all():
+        raise ValueError("values must be finite")
+    if n_resamples < 1 or not 0 < alpha < 1:
+        raise ValueError("n_resamples must be positive and alpha must be between 0 and 1")
     rng = np.random.default_rng(seed)
     idx = rng.integers(0, len(values), size=(n_resamples, len(values)))
     means = values[idx].mean(axis=1)
