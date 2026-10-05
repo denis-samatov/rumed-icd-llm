@@ -21,6 +21,12 @@ LLM_METHODS = ("zero_shot", "few_shot", "rag")
 
 
 def run(method: str, split: str, limit: int | None = None) -> dict:
+    if split not in ("dev", "test"):
+        raise ValueError("evaluation split must be dev or test")
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be a positive integer")
+    if method not in ("tfidf", *LLM_METHODS):
+        raise ValueError(f"unknown method {method!r}")
     train = load_split("train")
     target = load_split(split)[:limit]
     t0 = time.perf_counter()
@@ -39,6 +45,8 @@ def run(method: str, split: str, limit: int | None = None) -> dict:
             "tokens": {"cache_hit": usage.cache_hit, "cache_miss": usage.cache_miss,
                        "output": usage.output},
             "cost_usd_peak_upper_bound": round(usage.cost_usd_peak(), 4),
+            "new_requests": usage.new_requests,
+            "reused_responses": usage.calls - usage.new_requests,
         }
     else:
         raise ValueError(f"unknown method {method!r}")
@@ -63,11 +71,13 @@ def main() -> None:
     ap.add_argument("--method", default="tfidf", choices=["tfidf", *LLM_METHODS])
     ap.add_argument("--split", default="dev", choices=["dev", "test"])
     ap.add_argument("--limit", type=int, default=None, help="first N examples (smoke runs)")
+    ap.add_argument("--output-dir", type=Path, default=RESULTS,
+                    help="where to write metrics; use a scratch directory for reruns")
     args = ap.parse_args()
     metrics = run(args.method, args.split, args.limit)
-    RESULTS.mkdir(exist_ok=True)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
     suffix = f"_first{args.limit}" if args.limit else ""
-    out = RESULTS / f"{args.method}_{args.split}{suffix}.json"
+    out = args.output_dir / f"{args.method}_{args.split}{suffix}.json"
     out.write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
 

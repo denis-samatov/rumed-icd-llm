@@ -20,7 +20,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -101,11 +101,15 @@ class Usage:
     cache_miss: int = 0
     output: int = 0
     errors: list[str] = field(default_factory=list)
+    new_requests: int = 0
 
     def add(self, u: dict) -> None:
         self.calls += 1
-        self.cache_hit += u.get("prompt_cache_hit_tokens", 0)
-        self.cache_miss += u.get("prompt_cache_miss_tokens", u.get("prompt_tokens", 0))
+        hit = u.get("prompt_cache_hit_tokens", 0)
+        self.cache_hit += hit
+        self.cache_miss += u.get(
+            "prompt_cache_miss_tokens", max(0, u.get("prompt_tokens", 0) - hit)
+        )
         self.output += u.get("completion_tokens", 0)
 
     def cost_usd_peak(self) -> float:
@@ -154,9 +158,14 @@ def examples_for(method: str, rec: Record, train: Sequence[Record], retriever: R
 
 def predict(method: str, split: str, train: Sequence[Record], target: Sequence[Record],
             k: int = 15, seed: int = 0, workers: int = 8) -> tuple[list[list[str]], Usage]:
+    if method not in ("zero_shot", "few_shot", "rag") or split not in ("dev", "test"):
+        raise ValueError("expected an LLM method and a dev/test split")
+    if not train or not target:
+        raise ValueError("train and target must be nonempty")
+    if workers < 1 or k < 1:
+        raise ValueError("workers and k must be positive")
     codes = sorted({r.code for r in train})
     retriever = Retriever(train) if method == "rag" else None
-    key = load_api_key()
     cache_path = ROOT / "results" / "cache" / f"{method}_{split}.jsonl"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache: dict[str, dict] = {}
@@ -173,6 +182,7 @@ def predict(method: str, split: str, train: Sequence[Record], target: Sequence[R
 
     usage = Usage()
     todo = [j for j in jobs if j[2] not in cache]
+    key = load_api_key() if todo else ""
 
     def run(job: tuple) -> dict:
         rec, msgs, ck = job
@@ -180,11 +190,23 @@ def predict(method: str, split: str, train: Sequence[Record], target: Sequence[R
         return {"key": ck, "idx": rec.idx,
                 "content": resp["choices"][0]["message"]["content"], "usage": resp.get("usage", {})}
 
-    with ThreadPoolExecutor(workers) as pool, cache_path.open("a", encoding="utf-8") as fh:
-        for row in pool.map(run, todo):
-            cache[row["key"]] = row
-            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-            fh.flush()
+    first_error: Exception | None = None
+    if todo:
+        with ThreadPoolExecutor(workers) as pool, cache_path.open("a", encoding="utf-8") as fh:
+            futures = [pool.submit(run, job) for job in todo]
+            for future in as_completed(futures):
+                try:
+                    row = future.result()
+                except Exception as error:
+                    if first_error is None:
+                        first_error = error
+                    continue
+                cache[row["key"]] = row
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+                fh.flush()
+                usage.new_requests += 1
+        if first_error is not None:
+            raise first_error
 
     preds = []
     for _, _, ck in jobs:
