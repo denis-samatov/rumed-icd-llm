@@ -10,6 +10,11 @@ dependencies = [
     "scikit-learn>=1.4",
 ]
 
+[project.optional-dependencies]
+mlx = [
+    "mlx-lm>=0.32.0",
+]
+
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
 

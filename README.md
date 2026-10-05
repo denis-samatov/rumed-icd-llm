@@ -22,7 +22,7 @@ The data is not stored in this repository. `scripts/download_data.sh` downloads 
 | 0 | TF-IDF (word + char n-grams) + logistic regression | implemented. It is a harness sanity check against the paper's feature-based baseline (test Hit@1 49.76 / Hit@3 72.75) |
 | 1 | Zero-shot and few-shot prompting (15 fixed random training cases) | implemented on the DeepSeek API (`deepseek-flash`, temperature 0, thinking disabled); planned on the same open-weight base model as method 3 |
 | 2 | RAG: the 15 most similar training cases in the prompt (TF-IDF char n-gram cosine, retrieval over train only) | implemented, as for method 1 |
-| 3 | LoRA / QLoRA SFT (PEFT, TRL) | planned |
+| 3 | LoRA on a 4-bit Qwen3-8B (MLX, Apple Silicon); methods 1–2 rerun on the same base model | code ready (`scripts/run_local.sh`), not yet run |
 | 4 | vLLM serving, fp16 vs AWQ: p50/p95 latency, tokens/s, cost per 1k requests | planned |
 
 Every result reports a 95% bootstrap confidence interval and the rate of invalid ICD-10 codes.

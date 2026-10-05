@@ -18,6 +18,7 @@ RESULTS = Path(__file__).resolve().parents[2] / "results"
 
 
 LLM_METHODS = ("zero_shot", "few_shot", "rag")
+LOCAL_METHODS = ("local_zero_shot", "local_few_shot", "local_rag", "local_lora")
 
 
 def run(method: str, split: str, limit: int | None = None) -> dict:
@@ -48,6 +49,10 @@ def run(method: str, split: str, limit: int | None = None) -> dict:
             "new_requests": usage.new_requests,
             "reused_responses": usage.calls - usage.new_requests,
         }
+    elif method in LOCAL_METHODS:
+        from rumed_icd import local_llm
+
+        preds, extra = local_llm.predict(method.removeprefix("local_"), split, train, target)
     else:
         raise ValueError(f"unknown method {method!r}")
     labels = {r.code for r in train}
@@ -68,7 +73,7 @@ def run(method: str, split: str, limit: int | None = None) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--method", default="tfidf", choices=["tfidf", *LLM_METHODS])
+    ap.add_argument("--method", default="tfidf", choices=["tfidf", *LLM_METHODS, *LOCAL_METHODS])
     ap.add_argument("--split", default="dev", choices=["dev", "test"])
     ap.add_argument("--limit", type=int, default=None, help="first N examples (smoke runs)")
     ap.add_argument("--output-dir", type=Path, default=RESULTS,
