@@ -1,8 +1,10 @@
 data/raw/*.jsonl
 .venv/
+.venv-vllm/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
 results/cache/
 .claude/
+adapters/

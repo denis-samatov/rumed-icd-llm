@@ -1,0 +1,30 @@
+{
+  "n": 848,
+  "hit@1": 10.38,
+  "hit@1_ci95": [
+    8.49,
+    12.62
+  ],
+  "hit@3": 23.11,
+  "hit@3_ci95": [
+    20.4,
+    25.94
+  ],
+  "invalid_top1_rate": 0.0,
+  "outside_label_set_top1_rate": 0.0,
+  "method": "local_zero_shot",
+  "split": "dev",
+  "n_train": 4690,
+  "n_classes_train": 105,
+  "seconds": 1889.7,
+  "python": "3.11.15",
+  "model": "mlx-community/Qwen3-8B-4bit",
+  "scoring": "label-set log-likelihood, top-3",
+  "model_revision": "545dc4251c05440727734bcd94334791f6ab0192",
+  "adapter_sha256": null,
+  "new_predictions": 848,
+  "k_examples": 0,
+  "lora": null,
+  "correct@1": 88,
+  "correct@3": 196
+}

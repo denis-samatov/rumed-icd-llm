@@ -1,0 +1,43 @@
+{
+  "n": 822,
+  "hit@1": 35.64,
+  "hit@1_ci95": [
+    32.36,
+    38.93
+  ],
+  "hit@3": 60.1,
+  "hit@3_ci95": [
+    56.69,
+    63.38
+  ],
+  "invalid_top1_rate": 0.0,
+  "outside_label_set_top1_rate": 0.0,
+  "method": "local_lora",
+  "split": "test",
+  "n_train": 4690,
+  "n_classes_train": 105,
+  "seconds": 2503.2,
+  "python": "3.11.15",
+  "model": "mlx-community/Qwen3-8B-4bit",
+  "scoring": "label-set log-likelihood, top-3",
+  "model_revision": "545dc4251c05440727734bcd94334791f6ab0192",
+  "adapter_sha256": "05caadb000fed1f9abcea1092a3f665aed4641c9d215b662e5d5b7ec2d2f40c5",
+  "new_predictions": 822,
+  "k_examples": 0,
+  "lora": {
+    "num_layers": 16,
+    "rank": 8,
+    "scale": 20.0,
+    "dropout": 0.0,
+    "lr": 0.0001,
+    "batch_size": 1,
+    "epochs": 1,
+    "seed": 0,
+    "accumulation": 4,
+    "grad_checkpoint": true,
+    "max_steps": null,
+    "save_every": 10
+  },
+  "correct@1": 293,
+  "correct@3": 494
+}
