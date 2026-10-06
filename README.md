@@ -138,6 +138,11 @@ non-thinking prompt and scoring rule: sum of log-probabilities of three code
 tokens, ranking all 105 train labels; the end-of-turn token is not scored.
 Weights and hyperparameters were fixed before this evaluation, including test.
 
+![Qwen3 base and one-epoch LoRA test Hit@1 and Hit@3 with 95% confidence intervals; TF-IDF is a previously measured reference](docs/results_qwen3_test.png)
+
+Regenerate this separate Qwen3 chart from the committed metric files with
+`uv run --with matplotlib python scripts/plot_qwen3_results.py`.
+
 | Split | Model | Hit@1 (95% CI) | Hit@3 (95% CI) |
 |---|---|---|---|
 | dev, n=848 | Qwen3 base, zero-shot | 10.38 (8.49–12.62) | 23.11 (20.40–25.94) |
