@@ -1,254 +1,83 @@
 # rumed-icd-llm
 
-Prompting vs RAG for ICD-10 coding of Russian clinical complaints, with local Qwen3-8B QLoRA training, vLLM-Metal serving and a Kev-0.8B typed-decision transfer study. Published full-test numbers in this README come from `results/`; the paper baseline is an external reference.
-
-**Status:** methods 0–2 have full-test API/classifier results. One Qwen3-8B QLoRA epoch is complete, with full dev/test zero-shot and LoRA scores. Kev-0.8B has full dev/test results, measured local inference latency and a TypeSafe SDK interface check. Local Qwen3 few-shot/RAG and the vLLM serving performance study remain pending.
+ICD-10 coding of Russian patient complaints: prompting, RAG, local Qwen3-8B QLoRA and Kev-0.8B typed decisions. Full dev/test measurements are published in `results/`, with reproducible CPU verification for the local models.
 
 ## Task and data
 
-[RuMedTop3](https://github.com/sb-ai-lab/MedBench) (RuMedBench, [arXiv:2201.06499](https://arxiv.org/abs/2201.06499)) asks the model to predict the ICD-10 code from free-text patient complaints. Metrics are Hit@1 and Hit@3.
+[RuMedTop3](https://github.com/sb-ai-lab/MedBench) ([RuMedBench paper](https://arxiv.org/abs/2201.06499)) predicts an ICD-10 code from free-text complaints. Metrics are Hit@1 and Hit@3. Splits: train **4,690**, dev **848**, test **822**; train contains **105 codes**.
 
 | Item | Source | License |
 |---|---|---|
 | Benchmark code and splits | sb-ai-lab/MedBench | Apache-2.0 |
-| Underlying records | RuMedPrime, [Zenodo 5765873](https://zenodo.org/records/5765873) | CC BY 3.0 |
+| Underlying records and derived labels | RuMedPrime, [Zenodo 5765873](https://zenodo.org/records/5765873) | CC BY 3.0 |
 
-The data is not stored in this repository. `scripts/download_data.sh` downloads into a staging directory, verifies the committed `data/raw/SHA256SUMS`, and then installs the files. It refuses changed upstream data without replacing the checksum manifest. Loading a split also verifies its checksum.
-
-## Methods
-
-| # | Method | Status |
-|---|---|---|
-| 0 | TF-IDF (word + char n-grams) + logistic regression | implemented. It is a harness sanity check against the paper's feature-based baseline (test Hit@1 49.76 / Hit@3 72.75) |
-| 1 | Zero-shot and few-shot prompting (15 fixed random training cases) | full DeepSeek API results (`deepseek-flash`, temperature 0, thinking disabled); full Qwen3 zero-shot results; local few-shot implemented, not evaluated |
-| 2 | RAG: the 15 most similar training cases in the prompt (TF-IDF char n-gram cosine, retrieval over train only) | full DeepSeek results; local Qwen3 RAG implemented, not evaluated |
-| 3 | QLoRA SFT on Qwen3-8B 4-bit with MLX | one epoch complete; full dev/test evaluation below |
-| 4 | Local vLLM-Metal serving with a PEFT adapter | implemented; fp16/AWQ latency and throughput study remains pending |
-| 5 | Kev-0.8B zero-shot typed decisions with Russian ICD descriptions | full dev/test evaluation, paired TF-IDF control, local latency and SDK API check |
-
-Every result reports a 95% bootstrap confidence interval and the rate of invalid ICD-10 codes.
-
-## Run
-
-```bash
-scripts/download_data.sh
-uv run pytest
-uv run python -m rumed_icd.evaluate --method tfidf --split dev
-# LLM methods need DEEPSEEK_API_KEY in the environment or in .env (gitignored)
-uv run python -m rumed_icd.evaluate --method rag --split dev
-```
-
-LLM responses are cached in `results/cache/`, keyed by example and prompt hash. Completed responses are written as they arrive, including when another request fails. A fully cached run requires no API key. A lost response before it is cached can still require a new request; concurrent evaluator processes sharing one cache are unsupported.
-
-Use `--output-dir /tmp/rumed-rerun` to preserve the committed metric files during verification. `--limit` must be positive and writes a separate smoke result; it is not a full-split score.
-
-### Qwen3 training on Apple Silicon
-
-Use a native arm64 Python with `uv sync --locked --extra mlx`. The base model is
-`mlx-community/Qwen3-8B-4bit`, revision `545dc4251c05440727734bcd94334791f6ab0192`.
-Set `RUMED_MODEL_PATH` to that downloaded snapshot for offline operation.
-
-```bash
-# A bounded pipeline check, written separately from the full training run.
-uv run --locked --extra mlx python -m rumed_icd.train_lora \
-  --max-steps 5 --dev-loss-examples 8 --output adapters/pilot/lora_qwen3_8b.safetensors
-# One complete epoch over train; dev is used only to measure loss.
-uv run --locked --extra mlx python -m rumed_icd.train_lora
-# Same model and scoring rule; inspect dev before freezing test evaluation.
-uv run --locked --extra mlx python -m rumed_icd.evaluate --method local_zero_shot --split dev
-uv run --locked --extra mlx python -m rumed_icd.evaluate --method local_lora --split dev
-# After freezing choices, evaluate the held-out test split.
-uv run --locked --extra mlx python -m rumed_icd.evaluate --method local_zero_shot --split test
-uv run --locked --extra mlx python -m rumed_icd.evaluate --method local_lora --split test
-# Also available: local_few_shot and local_rag, retrieval over train only.
-```
-
-The adapter trains the last 16 blocks, rank 8, MLX scale 20, learning rate 1e-4,
-one epoch, seed 0. Microbatch 1 with accumulation 4 and gradient checkpointing
-keeps memory bounded. Loss is computed in float32 on the three observed code tokens
-and the end-of-turn token only. No additional gold labels are invented.
-Every 10 optimizer steps, adapter weights and a progress JSON are saved atomically.
-These are weight checkpoints; they do not restore optimizer state for an exact resume.
-Existing adapter files are not overwritten when starting a run.
-
-Local predictions rank all 105 training codes by three-token log-likelihood.
-They use the same non-thinking prompt for base and LoRA. This forced-choice rule
-differs from the DeepSeek JSON generation experiment, and makes label validity
-automatic. Cached results include the prompt, model revision and adapter hash.
-BF16 execution can change rankings of close candidates between cached and direct
-prefill; numerical checks must accompany any full result. A short dev sample and
-loss reduction do not establish improvement on the full held-out benchmark.
-
-### Serve the adapter with vLLM-Metal
-
-The community [vLLM-Metal plugin](https://github.com/vllm-project/vllm-metal)
-uses an independent environment because it pins a different MLX build:
-
-```bash
-uv venv --python 3.12 .venv-vllm
-uv pip install --python .venv-vllm/bin/python \
-  'https://github.com/vllm-project/vllm/releases/download/v0.30.0/vllm-0.30.0%2Bcpu-cp312-cp312-macosx_11_0_arm64.whl' \
-  'https://github.com/vllm-project/vllm-metal/releases/download/v0.30.0/vllm_metal-0.30.0-cp312-cp312-macosx_15_0_arm64.whl'
-uv run --locked --extra mlx python -m rumed_icd.export_peft \
-  --adapter adapters/lora_qwen3_8b.safetensors --output adapters/qwen3-peft
-RUMED_VLLM_BIN="$PWD/.venv-vllm/bin/vllm" bash scripts/serve_local.sh "$PWD/adapters/qwen3-peft"
-```
-
-The exporter transposes MLX matrices into PEFT orientation and sets alpha to
-`scale * rank`. The base quantization is preserved. The API binds to
-`http://127.0.0.1:8001/v1` by default (`RUMED_PORT=8002` selects another port);
-request `model: "rumed"` to use the adapter and
-`model: "qwen3-base"` for the base. Pass `chat_template_kwargs: {"enable_thinking": false}`
-in chat requests to match the training prompt. Serving generates text; the local
-benchmark's label-set scorer is a separate evaluation path.
-
-`scripts/run_local.sh` runs the full epoch, exports and starts the API in sequence.
-It requires `RUMED_VLLM_BIN` to identify the independent serving environment.
-Training and serving are sequential to avoid two 8B models sharing 16 GB RAM.
+Raw records are downloaded separately. `scripts/download_data.sh` stages the files, verifies `data/raw/SHA256SUMS`, then installs them. Loading a split also verifies its checksum. Repository code uses its own license.
 
 ## Results
 
-Data files are pinned by `data/raw/SHA256SUMS`. Splits: train 4,690, dev 848, test 822; 105 ICD-10 codes appear in train.
+Full test, **n = 822**. Intervals are 95% record-bootstrap CIs, 2,000 resamples, seed 0. The paper baseline is an external reference; all other scores below come from committed results.
 
-![Hit@1 and Hit@3 on the RuMedTop3 test split](docs/results_test.png)
+![All seven measured methods on RuMedTop3 test, with 95% bootstrap confidence intervals](docs/results_kev_test.png)
 
-Test split, n = 822. Dev results are in `results/*_dev.json` and show the same ranking. To regenerate the chart, run `uv run --with matplotlib python scripts/plot_results.py`.
+| Method | Hit@1 (95% CI), % | Hit@3 (95% CI), % |
+|---|---|---|
+| Paper, feature-based reference | 49.76 | 72.75 |
+| TF-IDF + logistic regression | **49.03 (45.62–52.43)** | **72.63 (69.46–75.67)** |
+| DeepSeek, zero-shot | 33.21 (30.05–36.37) | 50.12 (46.96–53.53) |
+| DeepSeek, 15 fixed examples | 33.33 (30.29–36.62) | 52.55 (49.27–55.84) |
+| DeepSeek + RAG, 15 nearest train cases | 47.81 (44.40–51.22) | 72.26 (69.34–75.30) |
+| Qwen3-8B, zero-shot | 7.66 (5.96–9.49) | 17.27 (14.60–19.71) |
+| Qwen3-8B + LoRA, one epoch | 35.64 (32.36–38.93) | 60.10 (56.69–63.38) |
+| Kev-0.8B, zero-shot with Russian labels | 12.41 (10.10–14.72) | 26.64 (23.60–29.68) |
 
-| Method | Hit@1 (95% CI) | Hit@3 (95% CI) | Top-1 outside label set | API cost, full test run |
-|---|---|---|---|---|
-| Paper, feature-based | 49.76 | 72.75 | — | — |
-| 0 · TF-IDF + LR | 49.03 (45.62–52.43) | 72.63 (69.46–75.67) | 0% | — |
-| 1 · zero-shot, `deepseek-flash` | 33.21 (30.05–36.37) | 50.12 (46.96–53.53) | 4.0% | ≤ $0.07 |
-| 1 · few-shot, 15 fixed cases | 33.33 (30.29–36.62) | 52.55 (49.27–55.84) | 3.0% | ≤ $0.08 |
-| 2 · RAG, 15 nearest training cases | 47.81 (44.40–51.22) | 72.26 (69.34–75.30) | 1.1% | ≤ $0.34 |
+- **TF-IDF is the strongest measured method.** Its fixed configuration gives aggregate scores close to the paper reference; that does not establish exact reproduction of the paper's implementation.
+- **Retrieved examples help DeepSeek more than fixed examples.** The recorded RAG score is close to TF-IDF, but overlapping individual CIs do not establish equivalence or test a paired difference.
+- **LoRA improves the same Qwen3 base but remains below TF-IDF.** The within-model paired comparison is documented in the [Qwen3 experiment](docs/qwen3_experiment.md#one-epoch-full-held-out-evaluation).
+- **Kev transfers poorly in the tested configuration.** It is an English-declared checkpoint tested on Russian medical text without RuMed fine-tuning; larger checkpoints and causes of the gap remain untested.
 
-Costs are upper bounds at the recorded peak-hour prices, computed from the token usage the API reported. They estimate one full evaluation, including reused cached responses, rather than the amount billed for a replay. New runs report `new_requests` and `reused_responses` separately. These API costs do not measure vLLM serving costs.
+These are comparisons of protocols as well as models: DeepSeek generates JSON, Qwen ranks code-token likelihoods, and Kev ranks a single choice question with all codes and Russian descriptions. TF-IDF learns from train. Earlier methods and the Kev study use the same pinned test records; this is an incremental benchmark, not a new independent confirmation dataset.
 
-**What this shows so far**
+## Methods and experiment guides
 
-- **Method 0 is a harness sanity check.** Its score is close to the paper's feature-based baseline. Its hyperparameters (C = 10, word 1–2-grams, char 2–5-grams) were fixed before the first run and were not tuned on test. Agreement of aggregate scores does not establish exact reproduction of the paper's implementation.
-- **A general-purpose API LLM without dataset examples is about 16 points below a linear classifier on Hit@1.** The labels follow the dataset's own coding practice: a few codes such as M54, I11 and G54 dominate. That practice is not recoverable from general ICD-10 knowledge.
-- **Fixed few-shot examples barely help in the recorded run.** Retrieved nearest cases (RAG) close the gap to TF-IDF; the observed RAG score is slightly lower. Overlapping individual confidence intervals do not establish equivalence or test the paired difference. Per-example predictions and a paired comparison are needed for that conclusion.
-- **This sets the bar for LoRA (method 3).** The one-epoch Qwen3 result below improves its own base, but remains below TF-IDF on both metrics.
+| Method | Measured status and guide |
+|---|---|
+| TF-IDF: word + char n-grams, logistic regression | Fixed C=10, word 1–2-grams, char 2–5-grams; full dev/test scores; paired control rerun for Kev |
+| DeepSeek zero-shot, few-shot, RAG | Full dev/test API runs, `deepseek-flash`, temperature 0; [protocol, chart, invalid/outside-label rates and costs](docs/prompting_rag.md) |
+| Qwen3-8B 4-bit + MLX QLoRA | One epoch complete, full dev/test base and LoRA scores; [training, predictions and paired statistics](docs/qwen3_experiment.md) |
+| vLLM-Metal with PEFT adapter | Local API smoke checked; [installation and serving](docs/qwen3_experiment.md#serve-the-adapter-with-vllm-metal); throughput and quantization study pending |
+| Kev-0.8B typed decisions | Full dev/test scores, local latency and real TypeSafe SDK check; [pinned setup, calibration plot and reproduction](docs/kev_research.md) |
 
-### Qwen3-8B: one epoch, full held-out evaluation
+Local Qwen3 few-shot and RAG are implemented but have not been evaluated.
 
-Measured on 2026-10-06 using MLX 0.32.3 / mlx-lm 0.32.0 on an Apple M2 Pro
-with 16 GB RAM. Base and LoRA use the same pinned 4-bit model revision,
-non-thinking prompt and scoring rule: sum of log-probabilities of three code
-tokens, ranking all 105 train labels; the end-of-turn token is not scored.
-Weights and hyperparameters were fixed before this evaluation, including test.
-
-![Qwen3 base and one-epoch LoRA test Hit@1 and Hit@3 with 95% confidence intervals; TF-IDF is a previously measured reference](docs/results_qwen3_test.png)
-
-Regenerate this separate Qwen3 chart from the committed metric files with
-`uv run --with matplotlib python scripts/plot_qwen3_results.py`.
-
-| Split | Model | Hit@1 (95% CI) | Hit@3 (95% CI) |
-|---|---|---|---|
-| dev, n=848 | Qwen3 base, zero-shot | 10.38 (8.49–12.62) | 23.11 (20.40–25.94) |
-| dev, n=848 | Qwen3 + LoRA | 35.85 (32.78–39.03) | 57.78 (54.60–61.20) |
-| test, n=822 | Qwen3 base, zero-shot | 7.66 (5.96–9.49) | 17.27 (14.60–19.71) |
-| test, n=822 | Qwen3 + LoRA | **35.64 (32.36–38.93)** | **60.10 (56.69–63.38)** |
-
-Paired LoRA minus base differences on test are **+27.98 percentage points**
-for Hit@1 (95% CI +24.33 to +31.75) and **+42.82 points** for Hit@3
-(+38.69 to +46.96), using 2,000 bootstrap resamples, seed 0.
-LoRA improves its base but does **not** beat the previously reproduced TF-IDF
-result of 49.03 / 72.63 on the same test bytes. TF-IDF was not rerun during
-this Qwen3 evaluation. Local few-shot and RAG have not been measured.
-
-Training completed 1,173 optimizer steps over 4,690 train records, one epoch,
-in 23,576 seconds (6 h 32 min 56 s), with 7.075 GiB peak MLX memory.
-Loss on the fixed 32-example dev subset decreased from 3.1931 to 0.5376;
-this subset loss is separate from the full-split accuracy above.
-The checkpoint contains weights only, without optimizer state.
-
-[Training metadata](results/qwen3_training.json) and
-[evaluation provenance and paired statistics](results/qwen3_summary.json)
-record the model revision, adapter SHA-256, dataset and prediction hashes.
-The model weights are not committed. The prediction files contain benchmark
-record IDs, gold codes and base/LoRA top-three codes, without complaint text:
-[dev](results/qwen3_predictions_dev.jsonl), [test](results/qwen3_predictions_test.jsonl).
-These dataset-derived labels retain the RuMedPrime CC BY 3.0 attribution
-listed above; repository code uses its own license.
-
-Independently reconstruct the published metrics and paired confidence
-intervals on CPU, without model weights, an API key or a model download:
+## Run and verify
 
 ```bash
 uv sync --locked
-uv run python scripts/verify_qwen3_results.py
+scripts/download_data.sh
+uv run --locked pytest -q
+uv run --locked python -m rumed_icd.evaluate --method tfidf --split dev --output-dir /tmp/rumed-rerun
+# API methods need DEEPSEEK_API_KEY in the environment or .env (gitignored).
+uv run --locked python -m rumed_icd.evaluate --method rag --split dev --output-dir /tmp/rumed-rerun
 ```
 
-This verifies the saved predictions and aggregate calculations; rerunning
-model inference requires the optional MLX environment and a trained adapter.
-BF16 differences between cached and direct scoring may reorder close
-candidates. Direct evaluation of all 105 codes agreed on top-three rankings
-for two checked dev cases; this does not establish agreement on all records.
-The serving API was also checked with the full adapter, but that smoke is
-separate from classification accuracy and is not a latency benchmark.
+API responses are cached in `results/cache/` by example and prompt hash and saved as they arrive. A fully cached run needs no API key. A lost response before caching can require another request; concurrent evaluators sharing one cache are unsupported. Use a separate `--output-dir` to preserve published results. Positive `--limit` runs write distinct smoke files and are not full-split scores.
 
-### Kev-0.8B: local typed decisions, no RuMed fine-tuning
-
-Measured on 2026-10-07, Apple M2 Pro / 16 GB. [Kev](https://github.com/jaredpalmer/kev)
-is an open Jev-like model with a TypeSafe-compatible API. We selected the 0.8B
-checkpoint for this machine; the upstream recommendation for 4B is a 32 GB Mac.
-Its [model card](https://huggingface.co/jaredpalmer/kev-0.8b) declares English,
-so this is a transfer test on Russian clinical complaints.
-
-One `choice` question contains all 105 train codes and their pinned Russian
-dictionary descriptions. The model ranks options directly, without generating
-text. No RuMed training, retrieval, prompt search or calibration is used. Runtime,
-weights, labels and protocol are pinned in `results/kev_protocol.json`;
-[the study](docs/kev_research.md) provides installation and offline evaluation commands.
-
-![Kev versus all previously measured methods on the full test split, with 95% bootstrap intervals](docs/results_kev_test.png)
-
-| Split | Method | Hit@1 (95% CI) | Hit@3 (95% CI) |
-|---|---|---|---|
-| dev, n=848 | Kev-0.8B, zero-shot | 15.57 (13.09–17.92) | 28.54 (25.47–31.60) |
-| dev, n=848 | TF-IDF + LR, paired rerun | 48.58 (45.17–52.00) | 72.29 (69.10–75.24) |
-| test, n=822 | Kev-0.8B, zero-shot | 12.41 (10.10–14.72) | 26.64 (23.60–29.68) |
-| test, n=822 | TF-IDF + LR, paired rerun | 49.03 (45.62–52.43) | 72.63 (69.46–75.67) |
-
-**Finding:** this Kev configuration transfers poorly to RuMed and is not a replacement
-for the trained TF-IDF classifier. On test, paired Kev minus TF-IDF differences are
-−36.62 percentage points for Hit@1 (95% CI −40.51 to −32.60) and −45.99 for Hit@3
-(−50.24 to −41.85). Kev scores above the earlier Qwen3 base, but below its LoRA
-adapter. Kev receives label descriptions, Qwen ranks code-token likelihoods, and
-DeepSeek generates JSON; these results compare protocols as well as models. The
-negative result does not identify whether language, domain, model size or option
-format is responsible, and does not evaluate larger Kev checkpoints.
-
-![Kev top-label reliability with per-bin counts and local inference latency distribution](docs/results_kev_reliability.png)
-
-Batch-1 warm inference: median **523 ms**, p95 **586 ms** on 822 test cases,
-including tokenization, prefill and decision scoring. Test MLX peak allocations:
-**2.57 GiB**, excluding CPU allocations and whole-system memory. The shipped
-temperature gives multiclass Brier **0.952806** and ten-bin top-label ECE
-**0.027855**; mean maximum option probability is **10.08%**. Small upper bins
-contain only one or two cases, so the plot does not establish reliable high-confidence
-behavior. This reliability calculation uses maximum option probability, not the
-SDK's separate `confidence` field.
-
-The local API also passed a synthetic check through **typesafe-sdk 0.6.0**:
-`choice`, `noul`, `score`, and a 105-option choice all parsed correctly. That
-interface check is stored in `results/kev_api_smoke.json` and is separate from
-RuMed accuracy and serving load/performance evidence.
-
-Predictions include IDs/codes, unrounded probabilities and timings, with no
-complaint text. Recompute the metrics, paired differences and reliability on CPU:
+Reconstruct published local metrics and paired CIs on CPU without model weights or API access, then regenerate the overview chart:
 
 ```bash
+uv run --locked python scripts/verify_qwen3_results.py
 uv run --locked python scripts/verify_kev_results.py
 uv run --locked --with matplotlib python scripts/plot_kev_results.py
 ```
 
+The experiment guides above contain the separate Apple Silicon environments, model downloads, training and serving commands.
+
 ## Evidence limits
 
-This benchmark is research software for dataset-specific coding, not a diagnostic service. Its record split does not establish patient-disjoint validation, performance at another institution, or clinical utility. No private institutional data is used here.
+This is research software for dataset-specific coding. Record splits do not establish patient-disjoint validation, another institution's performance, or clinical utility. No private institutional data is used.
 
-The API runs use a different model and scoring rule from the open-weight LoRA experiment. The same-base zero-shot/LoRA comparison is measured above; the four-way local comparison still needs few-shot and RAG results. GPU latency, throughput, quantization comparisons and serving cost require separate evidence.
+Qwen3 and Kev public predictions contain IDs, codes and no complaint text; Kev also includes unrounded probabilities and timings. CPU verification checks saved predictions and calculations; reproducing inference requires the pinned weights and runtime. DeepSeek response caches are not committed, so independent reconstruction requires corresponding responses or a new API run.
 
-Committed DeepSeek metric summaries do not contain the response cache. Independent score reconstruction for those API methods requires corresponding responses or a new API run. Qwen3 and Kev per-example predictions are included and can be independently rescored on CPU. Offline tests mock all paid calls.
+Forced choice guarantees label validity for the local scorers, not medical correctness or abstention. Qwen BF16 scoring can reorder close candidates between cached and direct execution; the documented numerical checks cover only a small dev sample. Kev's shipped temperature was not calibrated on RuMed, and small high-probability bins do not establish reliable confidence.
+
+API smoke checks establish interface behavior, separately from classification quality and load testing. Kev latency measures warm batch-1 library execution; its MLX peak counts Metal allocations rather than total RAM. GPU latency, serving throughput, quantization comparisons and serving cost need separate evidence. Offline tests mock paid calls.
