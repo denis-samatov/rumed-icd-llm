@@ -1,0 +1,150 @@
+{
+  "method": "kev",
+  "split": "dev",
+  "full_split": true,
+  "protocol_sha256": "ca210427ebdb45e06ab658c5402567445308a45a17a5b28234aead5294548299",
+  "raw_dataset_sha256": "6b56b2d916a9da92064c749092d2fc4a1677e17b9bb03978f41b213e99c6d286",
+  "predictions_sha256": "370337aa3e0b5802878c1132bdebc38762f5638fca26aa4c9c8f7e17cc67e4e9",
+  "n_train": 4690,
+  "n_classes_train": 105,
+  "metrics": {
+    "n": 848,
+    "hit@1": 15.57,
+    "hit@1_ci95": [
+      13.09,
+      17.92
+    ],
+    "hit@3": 28.54,
+    "hit@3_ci95": [
+      25.47,
+      31.6
+    ],
+    "invalid_top1_rate": 0.0
+  },
+  "tfidf_control": {
+    "n": 848,
+    "hit@1": 48.58,
+    "hit@1_ci95": [
+      45.17,
+      52.0
+    ],
+    "hit@3": 72.29,
+    "hit@3_ci95": [
+      69.1,
+      75.24
+    ],
+    "invalid_top1_rate": 0.0
+  },
+  "paired_vs_tfidf": {
+    "hit@1": {
+      "difference_pp": -33.02,
+      "ci95_pp": [
+        -36.91,
+        -29.13
+      ]
+    },
+    "hit@3": {
+      "difference_pp": -43.75,
+      "ci95_pp": [
+        -47.76,
+        -39.74
+      ]
+    }
+  },
+  "calibration": {
+    "multiclass_brier": 0.947835,
+    "ece_10_equal_width_bins": 0.054117,
+    "mean_top1_probability": 0.102823,
+    "bins": [
+      {
+        "lower": 0.0,
+        "upper": 0.1,
+        "n": 506,
+        "accuracy": 0.11462450592885376,
+        "mean_confidence": 0.0703925493545094
+      },
+      {
+        "lower": 0.1,
+        "upper": 0.2,
+        "n": 290,
+        "accuracy": 0.2103448275862069,
+        "mean_confidence": 0.13306798274660933
+      },
+      {
+        "lower": 0.2,
+        "upper": 0.3,
+        "n": 47,
+        "accuracy": 0.23404255319148937,
+        "mean_confidence": 0.23695663093252384
+      },
+      {
+        "lower": 0.3,
+        "upper": 0.4,
+        "n": 4,
+        "accuracy": 0.5,
+        "mean_confidence": 0.36077767610549927
+      },
+      {
+        "lower": 0.4,
+        "upper": 0.5,
+        "n": 1,
+        "accuracy": 0.0,
+        "mean_confidence": 0.40566858649253845
+      },
+      {
+        "lower": 0.5,
+        "upper": 0.6,
+        "n": 0,
+        "accuracy": null,
+        "mean_confidence": null
+      },
+      {
+        "lower": 0.6,
+        "upper": 0.7,
+        "n": 0,
+        "accuracy": null,
+        "mean_confidence": null
+      },
+      {
+        "lower": 0.7,
+        "upper": 0.8,
+        "n": 0,
+        "accuracy": null,
+        "mean_confidence": null
+      },
+      {
+        "lower": 0.8,
+        "upper": 0.9,
+        "n": 0,
+        "accuracy": null,
+        "mean_confidence": null
+      },
+      {
+        "lower": 0.9,
+        "upper": 1.0,
+        "n": 0,
+        "accuracy": null,
+        "mean_confidence": null
+      }
+    ],
+    "note": "shipped temperature; no RuMed calibration fitted; no confidence guarantee"
+  },
+  "latency": {
+    "load_and_warmup_seconds": 85.873,
+    "inference_seconds": 482.322,
+    "median_ms": 545.392,
+    "p95_ms": 697.24,
+    "includes": "tokenization + state/branch prefill + head + softmax",
+    "tfidf_fit_and_predict_seconds": 44.96
+  },
+  "input_tokens": {
+    "max": 2869,
+    "median": 1682.0
+  },
+  "memory": {
+    "mlx_peak_allocated_bytes": 2780282146,
+    "note": "Metal allocations; not whole-process RSS or total system RAM"
+  },
+  "python": "3.12.14",
+  "platform": "macOS-26.6.2-arm64-arm-64bit"
+}

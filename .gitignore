@@ -8,3 +8,4 @@ __pycache__/
 results/cache/
 .claude/
 adapters/
+.kev/
