@@ -8,6 +8,46 @@ The choice of 0.8B reflects the local M2 Pro / 16 GB machine. The upstream READM
 recommends a 32 GB Mac for 4B and 9B. This experiment does not establish that 0.8B
 is the most accurate member of the family.
 
+[Benchmark overview and shared evidence limits](../README.md). Run commands from the repository root.
+
+## Results
+
+Measured on 2026-10-07, Apple M2 Pro / 16 GB.
+
+[All-method test comparison](../README.md#results).
+
+| Split | Method | Hit@1 (95% CI) | Hit@3 (95% CI) |
+|---|---|---|---|
+| dev, n=848 | Kev-0.8B, zero-shot | 15.57 (13.09–17.92) | 28.54 (25.47–31.60) |
+| dev, n=848 | TF-IDF + LR, paired rerun | 48.58 (45.17–52.00) | 72.29 (69.10–75.24) |
+| test, n=822 | Kev-0.8B, zero-shot | 12.41 (10.10–14.72) | 26.64 (23.60–29.68) |
+| test, n=822 | TF-IDF + LR, paired rerun | 49.03 (45.62–52.43) | 72.63 (69.46–75.67) |
+
+**Finding:** this Kev configuration transfers poorly to RuMed and is not a replacement
+for the trained TF-IDF classifier. On test, paired Kev minus TF-IDF differences are
+−36.62 percentage points for Hit@1 (95% CI −40.51 to −32.60) and −45.99 for Hit@3
+(−50.24 to −41.85). Kev scores above the earlier Qwen3 base, but below its LoRA
+adapter. Kev receives label descriptions, Qwen ranks code-token likelihoods, and
+DeepSeek generates JSON; these results compare protocols as well as models. The
+negative result does not identify whether language, domain, model size or option
+format is responsible, and does not evaluate larger Kev checkpoints.
+
+![Kev top-label reliability with per-bin counts and local inference latency distribution](results_kev_reliability.png)
+
+Batch-1 warm inference: median **523 ms**, p95 **586 ms** on 822 test cases,
+including tokenization, prefill and decision scoring. Test MLX peak allocations:
+**2.57 GiB**, excluding CPU allocations and whole-system memory. The shipped
+temperature gives multiclass Brier **0.952806** and ten-bin top-label ECE
+**0.027855**; mean maximum option probability is **10.08%**. Small upper bins
+contain only one or two cases, so the plot does not establish reliable high-confidence
+behavior. This reliability calculation uses maximum option probability, not the
+SDK's separate `confidence` field.
+
+The local API also passed a synthetic check through **typesafe-sdk 0.6.0**:
+`choice`, `noul`, `score`, and a 105-option choice all parsed correctly. That
+interface check is stored in `results/kev_api_smoke.json` and is separate from
+RuMed accuracy and serving load/performance evidence.
+
 ## Frozen protocol
 
 - Runtime: [jaredpalmer/kev](https://github.com/jaredpalmer/kev), commit
