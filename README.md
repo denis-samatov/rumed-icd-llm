@@ -1,8 +1,8 @@
 # rumed-icd-llm
 
-Prompting vs RAG for ICD-10 coding of Russian clinical complaints, with local Qwen3-8B QLoRA training and vLLM-Metal serving. Published full-test numbers in this README come from `results/`; the paper baseline is an external reference.
+Prompting vs RAG for ICD-10 coding of Russian clinical complaints, with local Qwen3-8B QLoRA training, vLLM-Metal serving and a Kev-0.8B typed-decision transfer study. Published full-test numbers in this README come from `results/`; the paper baseline is an external reference.
 
-**Status:** methods 0–2 have full-test API/classifier results. One Qwen3-8B QLoRA epoch is complete, with full dev/test zero-shot and LoRA scores. Local few-shot/RAG and the serving performance study remain pending.
+**Status:** methods 0–2 have full-test API/classifier results. One Qwen3-8B QLoRA epoch is complete, with full dev/test zero-shot and LoRA scores. Kev-0.8B has full dev/test results, measured local inference latency and a TypeSafe SDK interface check. Local Qwen3 few-shot/RAG and the vLLM serving performance study remain pending.
 
 ## Task and data
 
@@ -24,6 +24,7 @@ The data is not stored in this repository. `scripts/download_data.sh` downloads 
 | 2 | RAG: the 15 most similar training cases in the prompt (TF-IDF char n-gram cosine, retrieval over train only) | full DeepSeek results; local Qwen3 RAG implemented, not evaluated |
 | 3 | QLoRA SFT on Qwen3-8B 4-bit with MLX | one epoch complete; full dev/test evaluation below |
 | 4 | Local vLLM-Metal serving with a PEFT adapter | implemented; fp16/AWQ latency and throughput study remains pending |
+| 5 | Kev-0.8B zero-shot typed decisions with Russian ICD descriptions | full dev/test evaluation, paired TF-IDF control, local latency and SDK API check |
 
 Every result reports a 95% bootstrap confidence interval and the rate of invalid ICD-10 codes.
 
@@ -188,10 +189,66 @@ for two checked dev cases; this does not establish agreement on all records.
 The serving API was also checked with the full adapter, but that smoke is
 separate from classification accuracy and is not a latency benchmark.
 
+### Kev-0.8B: local typed decisions, no RuMed fine-tuning
+
+Measured on 2026-10-07, Apple M2 Pro / 16 GB. [Kev](https://github.com/jaredpalmer/kev)
+is an open Jev-like model with a TypeSafe-compatible API. We selected the 0.8B
+checkpoint for this machine; the upstream recommendation for 4B is a 32 GB Mac.
+Its [model card](https://huggingface.co/jaredpalmer/kev-0.8b) declares English,
+so this is a transfer test on Russian clinical complaints.
+
+One `choice` question contains all 105 train codes and their pinned Russian
+dictionary descriptions. The model ranks options directly, without generating
+text. No RuMed training, retrieval, prompt search or calibration is used. Runtime,
+weights, labels and protocol are pinned in `results/kev_protocol.json`;
+[the study](docs/kev_research.md) provides installation and offline evaluation commands.
+
+![Kev versus all previously measured methods on the full test split, with 95% bootstrap intervals](docs/results_kev_test.png)
+
+| Split | Method | Hit@1 (95% CI) | Hit@3 (95% CI) |
+|---|---|---|---|
+| dev, n=848 | Kev-0.8B, zero-shot | 15.57 (13.09–17.92) | 28.54 (25.47–31.60) |
+| dev, n=848 | TF-IDF + LR, paired rerun | 48.58 (45.17–52.00) | 72.29 (69.10–75.24) |
+| test, n=822 | Kev-0.8B, zero-shot | 12.41 (10.10–14.72) | 26.64 (23.60–29.68) |
+| test, n=822 | TF-IDF + LR, paired rerun | 49.03 (45.62–52.43) | 72.63 (69.46–75.67) |
+
+**Finding:** this Kev configuration transfers poorly to RuMed and is not a replacement
+for the trained TF-IDF classifier. On test, paired Kev minus TF-IDF differences are
+−36.62 percentage points for Hit@1 (95% CI −40.51 to −32.60) and −45.99 for Hit@3
+(−50.24 to −41.85). Kev scores above the earlier Qwen3 base, but below its LoRA
+adapter. Kev receives label descriptions, Qwen ranks code-token likelihoods, and
+DeepSeek generates JSON; these results compare protocols as well as models. The
+negative result does not identify whether language, domain, model size or option
+format is responsible, and does not evaluate larger Kev checkpoints.
+
+![Kev top-label reliability with per-bin counts and local inference latency distribution](docs/results_kev_reliability.png)
+
+Batch-1 warm inference: median **523 ms**, p95 **586 ms** on 822 test cases,
+including tokenization, prefill and decision scoring. Test MLX peak allocations:
+**2.57 GiB**, excluding CPU allocations and whole-system memory. The shipped
+temperature gives multiclass Brier **0.952806** and ten-bin top-label ECE
+**0.027855**; mean maximum option probability is **10.08%**. Small upper bins
+contain only one or two cases, so the plot does not establish reliable high-confidence
+behavior. This reliability calculation uses maximum option probability, not the
+SDK's separate `confidence` field.
+
+The local API also passed a synthetic check through **typesafe-sdk 0.6.0**:
+`choice`, `noul`, `score`, and a 105-option choice all parsed correctly. That
+interface check is stored in `results/kev_api_smoke.json` and is separate from
+RuMed accuracy and serving load/performance evidence.
+
+Predictions include IDs/codes, unrounded probabilities and timings, with no
+complaint text. Recompute the metrics, paired differences and reliability on CPU:
+
+```bash
+uv run --locked python scripts/verify_kev_results.py
+uv run --locked --with matplotlib python scripts/plot_kev_results.py
+```
+
 ## Evidence limits
 
 This benchmark is research software for dataset-specific coding, not a diagnostic service. Its record split does not establish patient-disjoint validation, performance at another institution, or clinical utility. No private institutional data is used here.
 
 The API runs use a different model and scoring rule from the open-weight LoRA experiment. The same-base zero-shot/LoRA comparison is measured above; the four-way local comparison still needs few-shot and RAG results. GPU latency, throughput, quantization comparisons and serving cost require separate evidence.
 
-Committed DeepSeek metric summaries do not contain the response cache. Independent score reconstruction for those API methods requires corresponding responses or a new API run. Qwen3 per-example predictions are included and can be independently rescored on CPU. Offline tests mock all paid calls.
+Committed DeepSeek metric summaries do not contain the response cache. Independent score reconstruction for those API methods requires corresponding responses or a new API run. Qwen3 and Kev per-example predictions are included and can be independently rescored on CPU. Offline tests mock all paid calls.

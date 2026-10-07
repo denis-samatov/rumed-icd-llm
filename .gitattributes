@@ -1,0 +1,3 @@
+data/icd_labels_ru.json text eol=lf
+results/kev*.json text eol=lf
+results/kev*.jsonl text eol=lf

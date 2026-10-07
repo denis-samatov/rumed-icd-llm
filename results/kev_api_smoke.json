@@ -1,0 +1,42 @@
+{
+  "scope": "synthetic local API contract; not a quality or load benchmark",
+  "sdk": "typesafe-sdk",
+  "sdk_version": "0.6.0",
+  "base_url": "http://127.0.0.1:8008",
+  "backend": "mlx",
+  "dtype": "bfloat16",
+  "temperature": 2.3510958125672174,
+  "answers": {
+    "team": {
+      "type": "choice",
+      "choice": "billing",
+      "confidence": 0.8225,
+      "probabilities": {
+        "billing": 0.8817,
+        "shipping": 0.0534,
+        "returns": 0.0649
+      }
+    },
+    "duplicate": {
+      "type": "noul",
+      "noul": 0.9418
+    },
+    "urgency": {
+      "type": "score",
+      "score": 0.5306,
+      "confidence": 0.2453,
+      "legend": {
+        "0": "General question, no issue",
+        "1": "A billing problem needs a reply",
+        "2": "Immediate physical danger"
+      },
+      "probabilities": {
+        "0": 0.4863,
+        "1": 0.4969,
+        "2": 0.0169
+      }
+    }
+  },
+  "wide_choice_options": 105,
+  "checks": "SDK parsed three primitives and 105-option choice; normalized probabilities"
+}
