@@ -2,6 +2,26 @@
 
 ICD-10 coding of Russian patient complaints: prompting, RAG, local Qwen3-8B QLoRA and Kev-0.8B typed decisions. Full dev/test measurements are published in `results/`, with reproducible CPU verification for the local models.
 
+## At a glance
+
+| | |
+|---|---|
+| **What** | A head-to-head benchmark of LLM methods for predicting an ICD-10 code from a free-text Russian complaint (RuMedTop3: 822 test cases, 105 codes). |
+| **Result** | QLoRA on Qwen3-8B: **+28 pp Hit@1** over the same base model (7.7 → 35.6). Retrieved examples lift DeepSeek from **33.2 to 47.8** Hit@1. A TF-IDF baseline (49.0) remains the strongest measured method. |
+| **Rigor** | One pinned test split for every method, 95% bootstrap CIs, invalid-code rates and API costs, all committed in `results/`. |
+| **Run** | About two minutes on a laptop CPU, no API key: see below. |
+
+## Try it without an API key
+
+```bash
+git clone https://github.com/denis-samatov/rumed-icd-llm && cd rumed-icd-llm
+uv sync --locked
+scripts/download_data.sh   # downloads RuMedTop3 and verifies SHA-256 checksums
+uv run --locked python -m rumed_icd.evaluate --method tfidf --split dev --output-dir /tmp/rumed-rerun
+```
+
+The last command trains the TF-IDF baseline and prints dev Hit@1 / Hit@3 with 95% CIs as JSON. Writing to `/tmp/rumed-rerun` leaves the committed scores in `results/` untouched. LLM methods are covered in [Run and verify](#run-and-verify).
+
 ## Task and data
 
 [RuMedTop3](https://github.com/sb-ai-lab/MedBench) ([RuMedBench paper](https://arxiv.org/abs/2201.06499)) predicts an ICD-10 code from free-text complaints. Metrics are Hit@1 and Hit@3. Splits: train **4,690**, dev **848**, test **822**; train contains **105 codes**.
