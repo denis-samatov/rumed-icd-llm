@@ -11,13 +11,22 @@ ICD-10 coding of Russian patient complaints: prompting, RAG, local Qwen3-8B QLoR
 | **Rigor** | One pinned test split for every method, 95% bootstrap CIs, invalid-code rates and API costs, all committed in `results/`. |
 | **Run** | About two minutes on a laptop CPU, no API key: see below. |
 
+The maintained CPU execution profile is `requirements-execution.txt` (Python3.13,
+resolved/tested on macOS ARM64). Historical `uv.lock` is preserved as an older
+experiment snapshot; it is not the recommended fresh installation environment.
+Use [reproduction_acceptance.md](docs/reproduction_acceptance.md) for the separate
+MLX profile and the distinction between saved-result replay and new inference.
+Regenerate a profile before qualifying another platform.
+
 ## Try it without an API key
 
 ```bash
 git clone https://github.com/denis-samatov/rumed-icd-llm && cd rumed-icd-llm
-uv sync --locked
+python3.13 -m venv .venv
+uv pip sync --python .venv/bin/python requirements-execution.txt
+uv pip install --python .venv/bin/python --no-deps -e .
 scripts/download_data.sh   # downloads RuMedTop3 and verifies SHA-256 checksums
-uv run --locked python -m rumed_icd.evaluate --method tfidf --split dev --output-dir /tmp/rumed-rerun
+.venv/bin/python -m rumed_icd.evaluate --method tfidf --split dev --output-dir /tmp/rumed-rerun
 ```
 
 The last command trains the TF-IDF baseline and prints dev Hit@1 / Hit@3 with 95% CIs as JSON. Writing to `/tmp/rumed-rerun` leaves the committed scores in `results/` untouched. LLM methods are covered in [Run and verify](#run-and-verify).
@@ -72,24 +81,27 @@ Local Qwen3 few-shot and RAG are implemented but have not been evaluated.
 ## Run and verify
 
 ```bash
-uv sync --locked
+python3.13 -m venv .venv
+uv pip sync --python .venv/bin/python requirements-execution.txt
+uv pip install --python .venv/bin/python --no-deps -e .
 scripts/download_data.sh
-uv run --locked pytest -q
-uv run --locked python -m rumed_icd.evaluate --method tfidf --split dev --output-dir /tmp/rumed-rerun
+.venv/bin/python -m pytest -q
+.venv/bin/python -m rumed_icd.evaluate --method tfidf --split dev --output-dir /tmp/rumed-rerun
 # API methods need DEEPSEEK_API_KEY in the environment or .env (gitignored).
-uv run --locked python -m rumed_icd.evaluate --method rag --split dev --output-dir /tmp/rumed-rerun
+.venv/bin/python -m rumed_icd.evaluate --method rag --split dev --output-dir /tmp/rumed-rerun
 ```
 
-API responses are cached in `results/cache/` by example and prompt hash and saved as they arrive. A fully cached run needs no API key. A lost response before caching can require another request; concurrent evaluators sharing one cache are unsupported. Use a separate `--output-dir` to preserve published results. Positive `--limit` runs write distinct smoke files and are not full-split scores.
+API responses are cached in `results/cache/` by example and prompt hash and saved as they arrive. A fully cached run needs no API key. A lost response before caching can require another request; concurrent evaluators sharing one cache are unsupported. Use a separate `--output-dir` to preserve published results and isolate both API and local response caches under its `cache/` subdirectory. The default remains `results/`; concurrent writers to the same directory are unsupported. Positive `--limit` runs write distinct smoke files and are not full-split scores.
 
-Reconstruct published local metrics and paired CIs on CPU without model weights or API access, then regenerate the overview chart:
+Reconstruct published local metrics and paired CIs on CPU without model weights or API access:
 
 ```bash
-uv run --locked python scripts/verify_qwen3_results.py
-uv run --locked python scripts/verify_kev_results.py
-uv run --locked --with matplotlib python scripts/plot_kev_results.py
+.venv/bin/python scripts/verify_qwen3_results.py
+.venv/bin/python scripts/verify_kev_results.py
 ```
 
+Chart regeneration via `scripts/plot_kev_results.py` additionally needs Matplotlib;
+it is not part of the minimal CPU replay profile or the reported replay gate.
 The experiment guides above contain the separate Apple Silicon environments, model downloads, training and serving commands.
 
 ## Evidence limits

@@ -41,3 +41,12 @@ def copy_evidence(target):
     shutil.copytree(ROOT / "results", target / "results", ignore=shutil.ignore_patterns("cache"))
     (target / "data/raw").mkdir(parents=True)
     shutil.copyfile(ROOT / "data/raw/SHA256SUMS", target / "data/raw/SHA256SUMS")
+
+
+def test_optional_raw_validation_uses_supplied_root(tmp_path):
+    copy_evidence(tmp_path)
+    (tmp_path / "data/raw/dev_v1.jsonl").write_text(
+        '{"idx":"wrong","symptoms":"fixture","code":"J06"}\n'
+    )
+    with pytest.raises(ValueError, match="checksum"):
+        VERIFIER.verify(tmp_path)

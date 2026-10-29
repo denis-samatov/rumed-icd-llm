@@ -115,3 +115,24 @@ def test_empty_metrics_fail_with_clear_error():
         report([], [])
     with pytest.raises(ValueError, match="empty"):
         bootstrap_ci([])
+
+
+def test_explicit_output_directories_isolate_api_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(llm, "ROOT", tmp_path / "source")
+    monkeypatch.setattr(llm, "load_api_key", lambda: "fixture")
+    monkeypatch.setattr(evaluate, "load_split", lambda split: TRAIN if split == "train" else TARGET)
+    calls = []
+
+    def api(messages, key):
+        calls.append(messages)
+        return {"choices": [{"message": {"content": '{"codes": ["J06"]}'}}], "usage": {}}
+
+    monkeypatch.setattr(llm, "call_api", api)
+    for name in ("first", "second"):
+        out = tmp_path / name
+        evaluate.run("zero_shot", "test", output_dir=out)
+        assert (out / "cache/zero_shot_test.jsonl").exists()
+    assert len(calls) == 4
+    evaluate.run("zero_shot", "test", output_dir=tmp_path / "first")
+    assert len(calls) == 4
+    assert not (llm.ROOT / "results").exists()
