@@ -1,0 +1,6 @@
+# Optional inference profile; separately qualified from CPU verification.
+-r requirements-execution.in
+mlx==0.32.3
+mlx-lm==0.32.0
+certifi>=2026.10.19
+filelock>=4.2.1

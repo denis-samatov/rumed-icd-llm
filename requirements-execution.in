@@ -1,0 +1,7 @@
+# CPU benchmark verification and packaging; no model inference extras.
+numpy>=1.26
+scikit-learn>=1.4
+pytest>=8
+ruff>=0.6
+build
+hatchling

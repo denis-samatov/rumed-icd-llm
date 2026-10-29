@@ -9,7 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from rumed_icd.data import RAW_DIR, load_split
+from rumed_icd.data import load_split
 from rumed_icd.metrics import bootstrap_ci, hits, is_valid_icd10, report
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,8 +30,8 @@ def verify(root: Path = ROOT) -> None:
         assert len({row["idx"] for row in rows}) == len(rows)
         gold = [row["gold"] for row in rows]
         # Downloaded raw data is optional; when present, also check labels and target order.
-        if (RAW_DIR / f"{split}_v1.jsonl").exists():
-            records = load_split(split)
+        if (root / "data/raw" / f"{split}_v1.jsonl").exists():
+            records = load_split(split, raw_dir=root / "data/raw")
             assert [(r.idx, r.code) for r in records] == [(r["idx"], r["gold"]) for r in rows]
         values = {}
         for method, field in (("local_zero_shot", "base_top3"), ("local_lora", "lora_top3")):

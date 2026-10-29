@@ -21,7 +21,8 @@ LLM_METHODS = ("zero_shot", "few_shot", "rag")
 LOCAL_METHODS = ("local_zero_shot", "local_few_shot", "local_rag", "local_lora")
 
 
-def run(method: str, split: str, limit: int | None = None) -> dict:
+def run(method: str, split: str, limit: int | None = None,
+        *, output_dir: Path | None = None) -> dict:
     if split not in ("dev", "test"):
         raise ValueError("evaluation split must be dev or test")
     if limit is not None and limit < 1:
@@ -39,7 +40,8 @@ def run(method: str, split: str, limit: int | None = None) -> dict:
     elif method in LLM_METHODS:
         from rumed_icd import llm
 
-        preds, usage = llm.predict(method, split, train, target)
+        preds, usage = llm.predict(method, split, train, target,
+                                   cache_dir=output_dir / "cache" if output_dir else None)
         extra = {
             "model": llm.MODEL,
             "k_examples": 0 if method == "zero_shot" else 15,
@@ -52,7 +54,8 @@ def run(method: str, split: str, limit: int | None = None) -> dict:
     elif method in LOCAL_METHODS:
         from rumed_icd import local_llm
 
-        preds, extra = local_llm.predict(method.removeprefix("local_"), split, train, target)
+        preds, extra = local_llm.predict(method.removeprefix("local_"), split, train, target,
+                                          cache_dir=output_dir / "cache" if output_dir else None)
     else:
         raise ValueError(f"unknown method {method!r}")
     labels = {r.code for r in train}
@@ -79,7 +82,7 @@ def main() -> None:
     ap.add_argument("--output-dir", type=Path, default=RESULTS,
                     help="where to write metrics; use a scratch directory for reruns")
     args = ap.parse_args()
-    metrics = run(args.method, args.split, args.limit)
+    metrics = run(args.method, args.split, args.limit, output_dir=args.output_dir)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     suffix = f"_first{args.limit}" if args.limit else ""
     out = args.output_dir / f"{args.method}_{args.split}{suffix}.json"

@@ -157,7 +157,8 @@ def examples_for(method: str, rec: Record, train: Sequence[Record], retriever: R
 
 
 def predict(method: str, split: str, train: Sequence[Record], target: Sequence[Record],
-            k: int = 15, seed: int = 0, workers: int = 8) -> tuple[list[list[str]], Usage]:
+            k: int = 15, seed: int = 0, workers: int = 8,
+            *, cache_dir: Path | None = None) -> tuple[list[list[str]], Usage]:
     if method not in ("zero_shot", "few_shot", "rag") or split not in ("dev", "test"):
         raise ValueError("expected an LLM method and a dev/test split")
     if not train or not target:
@@ -166,7 +167,8 @@ def predict(method: str, split: str, train: Sequence[Record], target: Sequence[R
         raise ValueError("workers and k must be positive")
     codes = sorted({r.code for r in train})
     retriever = Retriever(train) if method == "rag" else None
-    cache_path = ROOT / "results" / "cache" / f"{method}_{split}.jsonl"
+    cache_root = cache_dir if cache_dir is not None else ROOT / "results" / "cache"
+    cache_path = cache_root / f"{method}_{split}.jsonl"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache: dict[str, dict] = {}
     if cache_path.exists():

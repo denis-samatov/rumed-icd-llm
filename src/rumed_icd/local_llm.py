@@ -176,7 +176,8 @@ def apply_lora(model) -> None:
 
 
 def predict(method: str, split: str, train: Sequence[Record], target: Sequence[Record],
-            k: int = 15, seed: int = 0) -> tuple[list[list[str]], dict]:
+            k: int = 15, seed: int = 0,
+            *, cache_dir: Path | None = None) -> tuple[list[list[str]], dict]:
     from rumed_icd.llm import Retriever, examples_for
 
     if method not in ("zero_shot", "few_shot", "rag", "lora") or split not in ("dev", "test"):
@@ -190,7 +191,8 @@ def predict(method: str, split: str, train: Sequence[Record], target: Sequence[R
     retriever = Retriever(train) if method == "rag" else None
     prompt_method = "zero_shot" if method == "lora" else method
 
-    cache_path = ROOT / "results" / "cache" / f"local_{method}_{split}.jsonl"
+    cache_root = cache_dir if cache_dir is not None else ROOT / "results" / "cache"
+    cache_path = cache_root / f"local_{method}_{split}.jsonl"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     done = {}
     if cache_path.exists():
