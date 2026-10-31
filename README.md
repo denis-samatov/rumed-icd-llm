@@ -113,3 +113,12 @@ Qwen3 and Kev public predictions contain IDs, codes and no complaint text; Kev a
 Forced choice guarantees label validity for the local scorers, not medical correctness or abstention. Qwen BF16 scoring can reorder close candidates between cached and direct execution; the documented numerical checks cover only a small dev sample. Kev's shipped temperature was not calibrated on RuMed, and small high-probability bins do not establish reliable confidence.
 
 API smoke checks establish interface behavior, separately from classification quality and load testing. Kev latency measures warm batch-1 library execution; its MLX peak counts Metal allocations rather than total RAM. GPU latency, serving throughput, quantization comparisons and serving cost need separate evidence. Offline tests mock paid calls.
+
+## CPU split and metric qualification
+
+The [2026-10-31 public-record qualification](docs/cpu_qualification.md) adds
+reproducible exact/normalized split-overlap counts and an independent scalar
+metric/bootstrap check of the unchanged TF-IDF baseline. It found no lexical/ID
+train–dev/test overlaps and one conflicting-label duplicate pair within train.
+These record-level checks do not establish patient/site independence or a new
+clinical holdout.
